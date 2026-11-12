@@ -1,0 +1,7 @@
+# Workstation overlay: reuse the already provisioned, pinned dependency image.
+# Clean servers use Dockerfile; this overlay only updates application sources.
+FROM dovideo-docling:local
+WORKDIR /app
+COPY app.py prescan.py adaptive_pipeline.py normalization.py pipeline.py fast_pdf.py docx_stream.py docx_rich.py docx_batch_boundary.py ocr_config.py boundary_stream.py continuity.py chunking_document.py viewer.html ./
+EXPOSE 5001
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5001", "--workers", "1", "--limit-concurrency", "8"]

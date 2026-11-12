@@ -1,0 +1,47 @@
+name: dovideo-rag
+services:
+  milvus:
+    image: milvusdb/milvus:v2.6.4
+    container_name: dovideo-milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt: ["seccomp:unconfined"]
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embedEtcd.yaml
+      COMMON_STORAGETYPE: local
+      DEPLOY_MODE: STANDALONE
+    volumes:
+      - milvus-data:/var/lib/milvus
+      - ./embedEtcd.yaml:/milvus/configs/embedEtcd.yaml:ro
+      - ./milvus-user.yaml:/milvus/configs/user.yaml:ro
+    ports: ["127.0.0.1:19530:19530", "127.0.0.1:9091:9091"]
+    cpus: 2
+    mem_limit: 3g
+  retrieval:
+    build: .
+    image: dovideo-retrieval:local
+    container_name: dovideo-retrieval
+    environment:
+      MILVUS_URI: http://milvus:19530
+      EMBEDDING_MODEL: BAAI/bge-small-zh-v1.5
+      RERANKER_MODEL: BAAI/bge-reranker-base
+      RERANK_BATCH_SIZE: ${RERANK_BATCH_SIZE:-8}
+      RERANK_MAX_TOKENS: ${RERANK_MAX_TOKENS:-256}
+      RETRIEVAL_QUEUE_TIMEOUT_SECONDS: ${RETRIEVAL_QUEUE_TIMEOUT_SECONDS:-30}
+      SYNONYM_EXPANSION_ENABLED: ${SYNONYM_EXPANSION_ENABLED:-false}
+      SYNONYM_ROUTE_WEIGHT: ${SYNONYM_ROUTE_WEIGHT:-0.25}
+      SYNONYM_MAX_TERMS: ${SYNONYM_MAX_TERMS:-6}
+      TITLE_MATCH_BONUS: ${DOCUMENT_TITLE_MATCH_BONUS:-1.0}
+      FOCUS_TITLE_BONUS: ${DOCUMENT_FOCUS_TITLE_BONUS:-1.0}
+      HF_HUB_DOWNLOAD_TIMEOUT: 60
+      HF_HUB_ETAG_TIMEOUT: 60
+      HF_HUB_DISABLE_XET: "1"
+    ports: ["127.0.0.1:5002:5002"]
+    volumes: ["retrieval-models:/models"]
+    cpus: 2
+    mem_limit: 4g
+    depends_on: [milvus]
+volumes:
+  milvus-data:
+  retrieval-models:

@@ -1,0 +1,14 @@
+{
+  "groups": [
+    ["同义词", "近义词"],
+    ["营业收入", "营收"],
+    ["资本性支出", "资本开支"],
+    ["雇员", "员工"],
+    ["延时", "延迟"],
+    ["吞吐量", "吞吐率"],
+    ["capital expenditure", "capital expenditures", "capex", "capital spending"],
+    ["employee", "employees", "staff"],
+    ["carrying capacity", "load capacity", "payload capacity"],
+    ["synonym", "synonyms", "equivalent expression"]
+  ]
+}

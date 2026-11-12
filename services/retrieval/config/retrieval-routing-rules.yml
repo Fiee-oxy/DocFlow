@@ -1,0 +1,11 @@
+version: retrieval-router-v2
+literal: [查找, 定位, 搜索包含, 原文出现, 精确匹配, 找到, find exact, find, locate, contains]
+exact_constraint: [搜索包含, 原文出现, 精确匹配, contains, exact match]
+semantic: [意思相近, 语义相似, 类似表达, 相近描述, semantically similar, similar meaning]
+comparison: [对比, 比较, 区别, 异同, compare, difference, versus]
+multi: [分别, 哪些, 列出, 汇总, 所有, 以及, list, all, both]
+global: [总结全文, 整体分析, 全文概述, 核心贡献, summarize the document, summarize the whole document]
+metadata: [文件数量, 上传时间, 文件大小, 解析状态, 索引状态, file size, upload time, parsing status, index status]
+section_read: [读取原文, 章节原文, 章的原文, 节的原文, read verbatim, read the original, show the original]
+negation: [不要, 不是, 并非, 别用, do not, don't, not exact, without]
+followup: [上述, 刚才, 那个, 它的, 继续, previous answer, that one]

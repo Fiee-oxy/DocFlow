@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>文档策略与召回预览</title><style>
+body{font:15px/1.6 system-ui,sans-serif;background:#f3f5f8;color:#172232;margin:0}main{max-width:1100px;margin:32px auto;padding:0 20px}h1{font-size:26px}section,article{background:white;border:1px solid #dce3ec;border-radius:10px;padding:18px;margin:14px 0}input,textarea,button{font:inherit;padding:8px;border:1px solid #bcc8d8;border-radius:6px}textarea{display:block;width:100%;box-sizing:border-box;margin:10px 0}button{cursor:pointer;background:#e9f0ff}button:disabled{opacity:.5;cursor:wait}label{display:block;margin:8px 0}label input{margin-right:10px}small,.muted{color:#526274}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fb;padding:12px}#status{white-space:pre-wrap}details{margin:12px 0}summary{cursor:pointer}#login{display:flex;gap:8px;flex-wrap:wrap}.source{white-space:pre-wrap;overflow-wrap:anywhere}.tag{display:inline-block;background:#edf3ff;padding:3px 8px;border-radius:4px;margin:3px}a{color:#245fc2}
+</style></head><body><main>
+<h1>文档策略与召回预览</h1><p>不调用聊天 LLM。使用本地 BGE 与 Milvus，展示正式问答将使用的原文；不生成回答、不写聊天记录、不自动建索引。</p>
+<section><form id="login"><input id="username" placeholder="现有账号" autocomplete="username" required><input id="password" type="password" placeholder="密码" autocomplete="current-password" required><button>登录并加载文档</button></form><small>登录令牌仅保存在此页面内存中。刷新页面需重新登录。</small><p id="backendInfo" class="muted">登录后显示当前后端的检索版本。</p></section>
+<section><h2>1. 选择文档</h2><button id="reload" disabled>刷新文档与策略</button><div id="documents">请先登录。</div><p class="muted">Short ≤8000；Medium ≤20000；Large ≤50000；Extra Large &gt;50000。按当前保守 Token 估算分类；选择两个以上文件进入 Multi。需要不同大小的实际文档才能验证全部五种处理策略。</p></section>
+<section><h2>2. 输入问题</h2><div id="presets"><button type="button">Redis 的作用是什么？</button> <button type="button">第1章讲了什么？</button> <button type="button">总结全文</button> <button type="button">比较两个文件的方案</button></div><textarea id="question" rows="3" placeholder="输入具体问题，或使用文档中的真实章节名"></textarea><label>最多返回原文条数 <input id="limit" type="number" min="1" max="200" value="50"></label><button id="preview" disabled>预览策略与召回（不调用 LLM）</button><p id="status" role="status"></p></section>
+<div id="result"></div></main><script>
+let token='',lastResult=null,backendInfo=null;
+const $=id=>document.getElementById(id);
+function node(tag,text,parent){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(parent)parent.append(el);return el;}
+async function api(path,body){const headers={};if(token)headers.Authorization='Bearer '+token;if(body)headers['Content-Type']='application/json';const r=await fetch(path,{method:body?'POST':'GET',cache:'no-store',headers,body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok||data.code!==0)throw Error(data.message||'请求失败：'+r.status);return data.data;}
+function status(text){$('status').textContent=text;}
+function clearResult(){lastResult=null;$('result').replaceChildren();}
+async function refreshBackendInfo(){try{backendInfo=await api('/documents/query/diagnostics');$('backendInfo').textContent='当前服务：'+backendInfo.retrievalVersion+' · 实例 '+backendInfo.instanceId+' · '+location.origin;}catch(e){backendInfo=null;$('backendInfo').textContent='当前服务未提供检索版本诊断，请确认后端已重新启动。';throw e;}}
+async function load(){clearResult();const docs=await api('/documents');const box=$('documents');box.replaceChildren();for(const doc of docs){const label=node('label',undefined,box);const check=node('input',undefined,label);check.type='checkbox';check.value=doc.id;check.onchange=clearResult;node('span',doc.filename+' · '+doc.status,label);node('small',' · '+doc.id,label);}if(!docs.length)node('p','没有文档，请先在原聊天界面上传。',box);}
+$('login').onsubmit=async e=>{e.preventDefault();$('preview').disabled=true;clearResult();try{const data=await api('/user/login',{username:$('username').value,password:$('password').value});token=data.token;$('password').value='';await refreshBackendInfo();await load();$('reload').disabled=false;$('preview').disabled=false;status('已加载当前账号的文档。');}catch(e){status(e.message);}};
+$('reload').onclick=()=>load().catch(e=>status(e.message));
+for(const b of $('presets').querySelectorAll('button'))b.onclick=()=>{$('question').value=b.textContent;clearResult();};
+$('question').oninput=clearResult;
+function sourceCard(s,parent){const article=node('article',undefined,parent);node('strong',s.filename||s.doc_id,article);node('div','页码：'+(s.pages?.length?s.pages.join(', '):'未提供')+' · 章节：'+(s.section||s.title_path||s.section_id||'未提供'),article);node('small','来源 '+s.id+' · Chunk '+s.chunk_id+' · 版本 '+s.index_version,article);node('p',s.text,article).className='source';}
+function render(data){lastResult=data;const box=$('result');box.replaceChildren();const head=node('section',undefined,box);node('h2','3. 预览结果',head);node('p','本次问题：'+data.question,head);node('p','执行时间：'+(data.generatedAt?new Date(data.generatedAt).toLocaleString('zh-CN'):'未提供')+' · 检索版本：'+(data.retrievalVersion||'未提供')+' · 实例：'+(data.instanceId||'未提供'),head);if(!data.retrievalVersion)node('p','此结果未提供新版诊断字段，请核对运行的后端版本。',head);for(const text of [data.queryStrategy,data.routingReason,'LLM 调用：'+data.llmCalls,'可执行：'+data.ready,'覆盖：'+data.coverage])node('span',text,head).className='tag';node('p','预算 '+data.evidenceBudget+' · 已选原文 '+(data.selectedSourceCount??data.sourceCount??0)+' · 耗时 '+data.latencyMs+'ms',head);if(data.blockedReason)node('p',data.blockedReason,head);for(const t of data.retrieval||[])if(t.blockedReason)node('p',t.filename+'：'+t.blockedReason,head);node('p','coverage 只描述提取文本；PARTIAL 不表示全文没有答案。Token 使用 UTF-8 字节保守估算。',head).className='muted';
+if(data.evidenceTruncated)node('p','原文返回条数已截断；预算筛选仍按完整候选执行。提高 limit 可查看更多。',head);
+for(const d of data.documents||[])node('p',d.filename+' · '+d.processingStrategy+' · '+d.tokensEstimated+'（估算） · '+d.indexState,head);
+node('p','这是检索预览，不是生成的回答。下面分别显示全部候选与预算筛选后的上下文；提高“最多返回原文条数”不会增加上下文预算。',head);
+const reasons={};for(const item of data.omittedEvidence||[])reasons[item.reason]=(reasons[item.reason]||0)+1;
+if(data.omittedCount)node('p','排除来源 '+data.omittedCount+' 条；当前返回记录中，超预算 '+(reasons.OVER_BUDGET||0)+' 条，重复 '+(reasons.DUPLICATE||0)+' 条。',head);
+for(const trace of data.retrieval||[]){
+ if(!trace.dense)continue;
+ const section=node('section',undefined,box);node('h3',trace.filename+'：召回流水线',section);
+ node('p','Dense '+trace.dense.length+' → BM25 '+trace.bm25.length+' → RRF 合并 '+trace.rrf.length+' → 精排 '+trace.reranked.length+' → Top-K '+trace.topK.length,section);
+ if(trace.matchedTitlePath)node('p','标题命中：'+trace.matchedTitlePath,section);
+ if(trace.searchScopeTitlePath)node('p','实际检索范围：'+trace.searchScopeTitlePath+' · '+trace.scopeType,section);
+ if(trace.searchQuestion)node('p','检索查询：'+trace.searchQuestion+'；精排保留原问题。',section);
+ if(trace.sectionExpansion){node('p','按章节顺序补全 '+trace.sectionSources+' 块，分 '+trace.sectionReadPlan.length+' 批读取；当前上下文仍受预算限制。',section);
+  for(const batch of trace.sectionReadPlan){const detail=node('details',undefined,section);node('summary','章节原文第 '+batch.batch+' 批 · '+batch.sourceCount+' 块',detail);for(const source of batch.sources)sourceCard(source,detail);}
+  if(trace.sectionReadTruncated)node('p','章节超过 128 块，读取计划已截断。可使用章节读取接口继续分页。',section);
+ }
+ if((data.selectedSourceCount||0)<trace.topK.length)node('p','Top-K 之后还会检查索引发布水位、扩展邻接原文、去重并应用预算，因此最终上下文条数可能更少。',section);
+ const controls=node('div',undefined,section),cards=node('div',undefined,section);
+ function show(stage){cards.replaceChildren();const hits=trace[stage]||[];const selected=new Set((data.evidence||[]).map(s=>s.chunk_id));
+  for(let i=0;i<hits.length;i++){const hit=hits[i];const entry=node('div',undefined,cards);
+   node('strong','#'+(i+1)+' · '+(selected.has(hit.chunk_id)?'已在返回上下文中':'候选')+(hit.rerank_score!==undefined?' · 精排分数 '+hit.rerank_score:hit.score!==undefined?' · 召回分数 '+hit.score:''),entry);
+   const refs=hit.sources||[],pages=[...new Set(refs.flatMap(s=>s.pages||[]))];
+   sourceCard({id:hit.chunk_id,chunk_id:hit.chunk_id,index_version:hit.index_version,doc_id:hit.doc_id,filename:trace.filename,pages,section:refs[0]?.section||hit.section_id,text:hit.content},entry);
+  }if(!hits.length)node('p','此阶段没有候选。',cards);
+ }
+ for(const [stage,label] of [['reranked','全部精排候选'],['dense','Dense'],['bm25','BM25'],['rrf','RRF'],['topK','Top-K']]){const b=node('button',label,controls);b.onclick=()=>show(stage);}
+ show('reranked');
+}
+if(data.evidence)node('h2','预算筛选后的上下文（'+data.selectedSourceCount+' 条）',box);
+for(const s of data.evidence||[])sourceCard(s,box);
+for(const group of data.mapGroups||[]){const section=node('section',undefined,box);node('h3','Map 分组 '+group.group+' · '+group.sourceCount+' 条原文 · '+group.tokensEstimated+'（估算）',section);for(const s of group.sources)sourceCard(s,section);if(group.sourcesTruncated)node('p','本组显示已截断。',section);}
+if(data.mapGroupsTruncated)node('p','Map 分组显示已截断，提高 limit 可查看更多。',box);
+const detail=node('details',undefined,box);node('summary','查看 Dense / BM25 / RRF / 精排候选、丢弃原因及完整 JSON',detail);node('pre',JSON.stringify(data,null,2),detail);
+const download=node('button','下载预览 JSON',box);download.onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(lastResult,null,2)],{type:'application/json'}));const a=node('a');a.href=url;a.download='retrieval-preview.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};}
+$('preview').onclick=async()=>{const documentIds=[...$('documents').querySelectorAll('input:checked')].map(e=>e.value);if(!documentIds.length)return status('请至少选择一个文档。');const question=$('question').value;const button=$('preview');button.disabled=true;clearResult();status('正在执行本地路由与检索，不调用聊天 LLM…');try{await refreshBackendInfo();const data=await api('/documents/query/preview',{documentIds,question,limit:Number($('limit').value)});if(question!==$('question').value||JSON.stringify(documentIds)!==JSON.stringify([...$('documents').querySelectorAll('input:checked')].map(e=>e.value))){status('问题或文档已修改，请重新执行预览。');return;}render(data);status('预览完成 · '+(data.generatedAt?new Date(data.generatedAt).toLocaleTimeString('zh-CN'):'执行时间未提供'));}catch(e){status(e.message);}finally{button.disabled=false;}};
+</script></body></html>

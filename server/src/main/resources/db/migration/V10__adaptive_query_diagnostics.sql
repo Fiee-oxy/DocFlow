@@ -1,0 +1,9 @@
+ALTER TABLE document_query_tasks
+ ADD COLUMN llm_calls INT NOT NULL DEFAULT 0,
+ ADD COLUMN input_tokens BIGINT NOT NULL DEFAULT 0,
+ ADD COLUMN output_tokens BIGINT NOT NULL DEFAULT 0,
+ ADD COLUMN usage_known_calls INT NOT NULL DEFAULT 0,
+ ADD COLUMN usage_unknown BOOLEAN NOT NULL DEFAULT FALSE,
+ ADD COLUMN failure_type VARCHAR(40) NULL,
+ ADD COLUMN failure_phase VARCHAR(40) NULL,
+ ADD COLUMN failure_http_status INT NULL;

@@ -1,0 +1,4 @@
+# Document retrieval uses a single standalone instance with persistent local storage.
+common:
+  security:
+    authorizationEnabled: false

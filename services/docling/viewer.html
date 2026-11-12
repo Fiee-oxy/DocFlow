@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Docling 解析内容预览</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f3f5f8;color:#233247;margin:0}main{max-width:1100px;margin:36px auto;padding:0 20px}h1{font-size:26px}p{line-height:1.8;color:#526176}button,input,select{font:inherit;padding:9px;border:1px solid #c7d1df;border-radius:6px}button{background:#245ab8;color:white;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.controls{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:20px 0}#search{flex:1;min-width:180px}.block{background:white;border:1px solid #dce3ec;border-radius:10px;margin:16px 0;padding:20px}.meta{font-size:13px;color:#63738b;line-height:1.8;overflow-wrap:anywhere}h2{font-size:17px;margin:10px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.8 system-ui,sans-serif;margin-bottom:0}.warning{background:#fff3d6;padding:12px 18px;border-radius:8px;white-space:pre-wrap}#status{white-space:pre-wrap}nav{display:flex;gap:16px;align-items:center;margin:20px 0}[hidden]{display:none!important}
+</style>
+<main>
+<h1>Docling 解析内容预览</h1>
+<p>上传 DOCX 或文本型 PDF，查看按阅读顺序提取的原始结构块。此处只调用解析服务，不调用大模型。表格以 Markdown 文本显示；这些结构块后续还会被后端组合成 AI 处理块。</p>
+<form id="upload" class="controls"><input id="file" type="file" accept=".docx,.pdf" required aria-label="选择文档"><button id="parse">解析并查看</button></form>
+<p id="status" role="status">请选择文档。已启用中英文 PDF OCR，识别结果请核对原文。</p>
+<div id="warnings" class="warning" hidden></div>
+<section id="results" hidden>
+<div class="controls"><input id="search" placeholder="搜索正文或章节" aria-label="搜索正文或章节"><select id="type" aria-label="按块类型筛选"><option value="">全部类型</option></select><button id="download" type="button">下载完整 JSON</button></div>
+<nav><button id="prev" type="button">上一页</button><span id="page"></span><button id="next" type="button">下一页</button></nav>
+<div id="blocks"></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let result=null,page=0,filename='',pageSize=30;
+function element(tag,text,className){const node=document.createElement(tag);node.textContent=text;if(className)node.className=className;return node}
+function render(){
+ const query=$('search').value.trim().toLocaleLowerCase(),type=$('type').value;
+ const items=result.blocks.map((block,index)=>({block,index})).filter(({block})=>(!type||block.label===type)&&(!query||`${block.text}\n${block.section}`.toLocaleLowerCase().includes(query)));
+ const pages=Math.max(1,Math.ceil(items.length/pageSize));page=Math.min(page,pages-1);
+ $('page').textContent=`匹配 ${items.length} 块 · 第 ${page+1} / ${pages} 页`;
+ $('prev').disabled=page===0;$('next').disabled=page>=pages-1;
+ const fragment=document.createDocumentFragment();
+ for(const {block,index} of items.slice(page*pageSize,(page+1)*pageSize)){
+  const card=element('article','','block');
+  card.append(element('div',`块 ${index+1} · 类型 ${block.label} · ${block.text.length} 字符 · ${block.pages.length?'物理页 '+block.pages.join(', '):'无页码（DOCX 通常无固定页码）'} · ${block.ref}`,'meta'),element('h2',block.section),element('pre',block.text));fragment.append(card);
+ }
+ $('blocks').replaceChildren(fragment);
+}
+$('upload').addEventListener('submit',async event=>{
+ event.preventDefault();const file=$('file').files[0];if(!file)return;
+ if(!/\.(docx|pdf)$/i.test(file.name)){ $('status').textContent='请选择 DOCX 或 PDF 文件。';return; }
+ const button=$('parse');button.disabled=true;$('results').hidden=true;$('warnings').hidden=true;
+ $('status').textContent='正在解析，请稍候。大文件可能需要数分钟，请保持此页面打开。';
+ try{
+  const data=new FormData();data.append('file',file);const start=performance.now();
+  const response=await fetch('/parse',{method:'POST',body:data});
+  const parsed=await response.json();if(!response.ok)throw new Error(typeof parsed.detail==='string'?parsed.detail:JSON.stringify(parsed.detail));
+  result=parsed;filename=file.name;page=0;$('search').value='';
+  $('type').replaceChildren(new Option('全部类型',''),...Array.from(new Set(result.blocks.map(b=>b.label))).map(label=>new Option(label,label)));
+  const chars=result.blocks.reduce((sum,b)=>sum+b.text.length,0),pages=new Set(result.blocks.flatMap(b=>b.pages));
+  $('status').textContent=`${filename}：共 ${result.blocks.length} 个结构块，${chars.toLocaleString()} 字符，${pages.size} 个有文本来源的物理页，耗时 ${((performance.now()-start)/1000).toFixed(1)} 秒。请重点检查阅读顺序、章节归属、表格及末尾内容。`;
+  $('warnings').textContent=(result.warnings||[]).join('\n');$('warnings').hidden=!result.warnings?.length;
+  $('results').hidden=false;render();
+ }catch(error){$('status').textContent=`解析失败：${error.message}。503 可能表示解析服务正在处理其他文件，请稍后重试。`;}
+ finally{button.disabled=false;}
+});
+for(const id of ['search','type'])$(id).addEventListener('input',()=>{page=0;render()});
+$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};
+$('download').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download=filename+'.docling.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+</script>
+</html>

@@ -1,0 +1,9 @@
+# Local development fallback using images already available on this workstation.
+# docker compose -f docker-compose.yml -f docker-compose.local.yml up -d mysql redis minio rmqnamesrv rmqbroker
+services:
+  minio:
+    image: minio/minio:RELEASE.2024-05-28T17-19-04Z
+  rmqnamesrv:
+    image: apache/rocketmq:5.3.2
+  rmqbroker:
+    image: apache/rocketmq:5.3.2

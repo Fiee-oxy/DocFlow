@@ -1,0 +1,5 @@
+{
+  "name": "docflow-extension",
+  "private": true,
+  "type": "module"
+}
